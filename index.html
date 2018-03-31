@@ -1,0 +1,535 @@
+<!-- DINA DENG -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<!-- Embed web font -->
+	<link href="https://fonts.googleapis.com/css?family=Lobster" rel="stylesheet">
+	<title>Web Audio Visualizer</title>
+	<style>
+	body 
+	{
+		background-image: url('images/background.jpg');
+		background-size: cover;
+        font-family: Georgia, 'Times New Roman', Times, serif;
+		font-size: 17px;
+		color: black;
+    }
+
+	h1
+	{
+		font-family: 'Lobster', cursive;
+		color: white;
+	}
+      
+	canvas 
+	{
+        box-shadow: 4px 4px 8px rgba(0,0,0,0.5);
+        background: black;
+    }
+
+	.center 
+	{
+		text-align: center;
+	}
+
+	.right 
+	{
+		float: right; 
+		width: 25%;
+	}
+
+	.center-Right 
+	{
+		float: right;
+		width: 20%;
+	}
+      
+    #controls
+	{
+      	margin-left:10px;
+        margin-top:10px;
+    }
+
+	button
+	{
+		border: hidden;
+		background: #f6f6f6;
+		padding: 0px;
+		margin: 0px;
+		height: 33px;
+		width: 30px;
+	}
+
+	#fsButton img
+	{
+		padding-left: 4px;
+		display: block;
+		height: 20px;
+		width: 20px;
+	}
+	</style>
+
+	<script>
+	(function()
+	{
+		"use strict";
+		
+		var NUM_SAMPLES = 256;
+		var SOUND_1 = 'media/SpecialSpotlight.mp3';
+		var SOUND_2 = 'media/Ice Flow.mp3';
+		var SOUND_3 = 'media/Undaunted.mp3';
+		var audioElement;
+		var analyserNode;
+		var canvas,ctx,invert=false,noise=false,boxChecked=false,circleRadius=100;
+		var freqData = true;
+		var waveData = false;
+		var barWidth = 4,barSpacing = 1,barHeight = 100, topSpacing = 50,maxRadius = 4;
+		var radialCircles = true, sideCircles= false, bezierCurve = true;
+		var fillStyle;
+		var delayAmount = 0;
+		var delayNode;
+		
+		function init()
+		{
+			// set up canvas 
+			canvas = document.querySelector('canvas');
+			ctx = canvas.getContext("2d");
+			
+			// get reference to audio element on page
+			audioElement = document.querySelector('audio');
+			
+			// call our helper function and get an analyser node
+			analyserNode = createWebAudioContextWithAnalyserNode(audioElement);
+			
+			// get sound track <select> and Full Screen button working
+			setupUI();
+			
+			// load and play default sound into audio element
+			playStream(audioElement,SOUND_1);
+			
+			// start animation loop
+			update();
+		}
+		
+		
+		function createWebAudioContextWithAnalyserNode(audioElement) 
+		{
+			var audioCtx, analyserNode, sourceNode;
+			// create new AudioContext
+			audioCtx = new (window.AudioContext || window.webkitAudioContext);
+			
+			// create an analyser delay node
+			analyserNode = audioCtx.createAnalyser();
+			delayNode = audioCtx.createDelay();
+			delayNode.delayTime.value = delayAmount;
+
+			analyserNode.fftSize = NUM_SAMPLES;
+			
+			// hooking up the <audio> element to the analyserNode
+			sourceNode = audioCtx.createMediaElementSource(audioElement); 
+			sourceNode.connect(analyserNode);
+			sourceNode.connect(delayNode);
+			delayNode.connect(analyserNode);
+			
+			analyserNode.connect(audioCtx.destination);
+
+			return analyserNode;
+		}
+		
+		function setupUI()
+		{
+			// Selecting between the 3 music tracks
+			document.querySelector("#trackSelect").onchange = function(e)
+			{
+				playStream(audioElement,e.target.value);
+			};
+			
+			// Full screen image button
+			document.querySelector("#fsButton").onclick = function()
+			{
+				requestFullscreen(canvas);
+			};
+
+			// Bar Width Slider
+			document.querySelector('#barWSlider').onchange = function(e)
+			{
+				barWSlider(e.target.value);
+				document.querySelector("#bwResults").innerHTML = e.target.value;
+			};
+
+			// Radius of Circle
+			document.querySelector('#radiusSlider').onchange = function(e)
+			{
+				radiusSlider(e.target.value);
+				document.querySelector("#rdResults").innerHTML = e.target.value;
+			};
+
+			// Radial circles checkbox
+			document.getElementById('radialCheckbox').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked)
+				{
+					radialCircles = true; 
+				}
+
+				else
+				{
+					radialCircles = false; 
+				}
+			}
+
+			// Side Circles checkbox
+			document.getElementById('circlesCheckbox').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked)
+				{
+					sideCircles = true; 
+				}
+				else
+				{
+					sideCircles = false; 
+				}
+			}
+
+			// Bezier checkbox
+			document.getElementById('bezierCheckbox').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked)
+				{
+					bezierCurve = true; 
+				}
+				else
+				{
+					bezierCurve = false; 
+				}
+			}
+
+			// Invert checkbox
+			document.getElementById('invertCheckbox').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked)
+				{
+					invert = true; 
+				}
+				else
+				{
+					invert = false; 
+				}
+			}
+
+			// Noise checkbox
+			document.getElementById('noiseCheckbox').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked) 
+				{
+					noise = true; 
+				}
+				else 
+				{
+					noise = false; 
+				}
+			}
+
+			// Select to change background color
+			document.querySelector('#colorSelect').onchange = function(e)
+			{
+		
+				document.getElementById("canvas").style.backgroundColor = e.target.value;
+			};
+
+			// Type of data: frequency or waveform
+			// If the frequency data radio button is checked, freqData becomes true and waveData is false.
+			// (and vice-versa).
+			document.getElementById('fData').onchange = function(e)
+			{
+				boxChecked= e.target.checked;
+				if(e.target.checked)
+				{
+					freqData = true;
+					waveData = false;
+				}
+			}
+
+			document.getElementById('wData').onchange = function(e)
+			{
+				boxChecked = e.target.checked;
+				if(e.target.checked)
+				{
+					waveData = true;
+					freqData = false;
+				}
+			}
+		
+		// Delay Slider
+		var slide3 = document.getElementById('delaySlider'),
+		sliderVal3 = document.getElementById('delSliderResults');
+		slide3.onchange = function()
+		{
+			sliderVal3.innerHTML = this.value;
+			delayAmount = this.value;
+
+		}
+	}
+	
+		function playStream(audioElement,path) 
+		{
+			audioElement.src = path;
+			audioElement.play();
+			audioElement.volume = 0.2;
+			// document.querySelector('#status').innerHTML = "Now playing: " + path;
+		}
+
+		// Changing slider amounts based on user's choice
+		function barWSlider(amount)
+		{
+			barWidth = amount;
+		}
+
+		function radiusSlider(amount)
+		{
+			maxRadius = amount;
+		}
+
+		function manipulatePixels() 
+		{
+			var imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+
+			var data = imageData.data;
+			var length = data.length;
+			var width = imageData.width;
+
+			for(var i=0; i<length;i+=4)
+			{
+				if(invert)
+				{
+					// inverting every color channel
+					var red=data[i], green=data[i+1],blue=data[i+2];
+					data[i] = 255-red;
+					data[i+1] = 255-green;
+					data[i+2] = 255-blue;
+				}
+
+				// white noise
+				if(noise && Math.random()<.10)
+				{
+					data[i] = data[i+1] = data[i+2] = 255; 
+					// adding noise in areas on the canvas that is black
+					data[i+3] = 255;
+				}
+			}
+			ctx.putImageData(imageData,0,0);
+		}
+		
+		
+		function update() 
+		{ 
+			requestAnimationFrame(update);
+			
+			var data = new Uint8Array(NUM_SAMPLES/2); 
+			
+			// If freqData is true only the frequency data is displayed
+			if(freqData)
+			{
+				analyserNode.getByteFrequencyData(data);
+			}
+
+			// If waveData is true only the waveform data is displayed
+			if(waveData)
+			{
+				analyserNode.getByteTimeDomainData(data); 
+			}
+
+			// Draw visualizations
+			ctx.clearRect(0,0,canvas.width,canvas.height);  
+
+			for(var i=0; i<data.length; i++)
+			{ 
+				var gradient = ctx.createLinearGradient(0,0,0,170);
+				gradient.addColorStop(0, makeColor(108, 236, 177,0.5));
+				gradient.addColorStop(0.5, makeColor(108, 153, 236,0.5));
+				gradient.addColorStop(1, makeColor(177, 108, 236,0.5));
+				ctx.strokeStyle = gradient;
+
+				// Radial Circles
+				// If the checkbox for radial circles is checked draw three radial
+				// circles at the top of the canvas. Radius of the circles depend 
+				// on the frequency/waveform data.
+				if(radialCircles)
+				{
+					for(var j = 0; j < 4; j++)
+					{
+						ctx.lineWidth = 2;
+						ctx.beginPath();
+						ctx.arc(j*canvas.width/2, 0, data[i], 2*Math.PI, false);
+						ctx.closePath();
+						ctx.stroke();
+						ctx.closePath();
+						ctx.stroke();
+					}
+				}
+
+				// Side Circles 
+				// The x position of each circle is located at the canva's width. The circles' y coordinates
+				// are spaced depending on the barWidth and barSpacing. 
+				if(sideCircles)
+				{
+					// pink 
+					ctx.fillStyle = makeColor(184, 3, 127,0.8);
+					ctx.beginPath();
+					ctx.arc(canvas.width-data[i], i*(barWidth+barSpacing), maxRadius , 0, 2 * Math.PI, false);
+					ctx.fill();
+					ctx.closePath();
+
+					// green
+					ctx.fillStyle = makeColor(3, 184, 37,0.8);
+					ctx.beginPath();
+					ctx.arc(data[i],i*(barWidth+barSpacing), maxRadius, 0, 2 * Math.PI, false);
+					ctx.fill();
+					ctx.closePath();
+				}
+
+				// Draing rainbow Bezier Curve
+				if(bezierCurve)
+				{
+					// Bezier Curve- Rainbow Gradient
+					var gradientRainbow = ctx.createLinearGradient(0,100,canvas.width,canvas.height);
+					gradientRainbow.addColorStop(0, makeColor(255,0,0,0.3));
+					gradientRainbow.addColorStop(0.2, makeColor(255,165,0,0.3));
+					gradientRainbow.addColorStop(0.4, makeColor(255,255,0,0.3));
+					gradientRainbow.addColorStop(0.6, makeColor(173,255,47,0.3));
+					gradientRainbow.addColorStop(0.8, makeColor(30,144,255,0.3));
+					gradientRainbow.addColorStop(1, makeColor(85,26,139,0.5));
+					ctx.strokeStyle = gradientRainbow;
+
+					ctx.beginPath();
+					ctx.moveTo(0, 220);
+					ctx.bezierCurveTo(0, canvas.width, 330, data[i], canvas.width,320);
+					ctx.stroke();
+				}
+			}
+			manipulatePixels();	
+			delayNode.delayTime.value = delayAmount;					
+		}
+
+		// HELPER
+		function makeColor(red, green, blue, alpha)
+		{
+   			var color='rgba('+red+','+green+','+blue+', '+alpha+')';
+   			return color;
+		}
+
+		 // FULL SCREEN MODE
+		function requestFullscreen(element) 
+		{
+			if (element.requestFullscreen) 
+			{
+			  element.requestFullscreen();
+			} 
+			else if (element.mozRequestFullscreen) 
+			{
+			  element.mozRequestFullscreen();
+			} 
+			else if (element.mozRequestFullScreen) 
+			{ 
+			  element.mozRequestFullScreen();
+			} 
+			else if (element.webkitRequestFullscreen) 
+			{
+			  element.webkitRequestFullscreen();
+			}
+		};
+
+		window.addEventListener("load",init);
+
+	}());
+		
+	</script>
+</head>
+<body>
+	<div class="center">		
+	<h1> Audio Visualizer </h1>
+	<canvas id="canvas" width="600" height="410"></canvas>
+
+	<!--CONTROLS-->
+	<div id="controls">
+		<audio controls loop></audio>
+		<button id="fsButton"><img src = "images/fullScreen.png"></button>
+		<br>
+
+		<!--TRACK SELECT-->
+		<label>Track: 
+			<select id="trackSelect" >
+				<option value="media/SpecialSpotlight.mp3">Special Spotlight</option>
+				<option value="media/Ice Flow">Ice Flow</option>
+				<option value="media/Undaunted.mp3">Undaunted</option>
+			</select>
+		</label>
+		<span id="bar">|</span> 
+
+		<!--RADIO BUTTONS FOR TYPE OF DATA	-->
+		<label for="myRadio">Frequency Data</label>
+		<input type="radio" name ="data" id="fData" checked>
+		<span id="bar">|</span> 
+		<label for="myRadio">Waveform Data</label>
+		<input type="radio" name ="data" id="wData">
+	</div>
+
+	<!--USER'S OPTIONS-->
+	<div class="center">
+		<span>
+			<br>
+			<!--CHECKBOXES-->
+			<label for="myCheckbox">Radial Circles</label>
+			<input type="checkbox" id="radialCheckbox" checked>
+			<span id="bar">|</span> 
+			<label for="myCheckbox">Circles</label>
+			<input type="checkbox" id="circlesCheckbox">
+			<span id="bar">|</span> 
+			<label for="myCheckbox">Bezier Curve</label>
+			<input type="checkbox" id="bezierCheckbox" checked>
+			<span id="bar">|</span> 
+			<label for="myCheckbox">Invert</label>
+			<input type="checkbox" id="invertCheckbox">
+			<span id="bar">|</span> 
+			<label for="myCheckbox">Noise</label>
+			<input type="checkbox" id="noiseCheckbox">
+
+			<!--SLIDERS-->
+			<div class="center">
+			<label for="bwSlider">Change circles' bar width</label>
+			<input id="barWSlider" type ="range" min ="1" max="10" step ="1"
+				onchange="barWSlider(this.value)">
+			<span id="bwResults">4</span> <span id="bar">|</span> 
+
+			<label for="rdSlider">Change circles' radius</label>
+			<input id="radiusSlider" type ="range" min ="1" max="10" step ="1"
+				onchange="radiusSlider(this.value)">
+			<span id="rdResults">4</span>		
+			</div> 
+		</span>
+			<label>
+				Delay/Reverb:
+				<input id="delaySlider" type="range" min="0.0" max="1.0" value="0" step="0.1">
+				<span id="delSliderResults"> 0 </span>
+			</label>
+	</div>
+
+		<!--CHANGING CANVAS BACKGROUND COLOR-->
+		<label>Background Color: 
+			<select id="colorSelect">
+				<option value="black">Black</option>
+				<option value="aliceblue">Alice Blue</option>
+				<option value="white">White</option>
+				<option value="lightyellow">Yellow</option>
+				<option value="rebeccapurple">Purple</option>
+			</select>
+		</label>
+	</div> 
+</body>
+</html>
